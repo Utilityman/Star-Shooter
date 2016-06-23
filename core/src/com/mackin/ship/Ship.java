@@ -15,16 +15,18 @@ import com.mackin.agalag.AgalagGame;
 
 public class Ship extends Sprite
 {
+	private Vector2 previousPosition;
 	private World world;
 	private Body b2body;
 	
-	public Ship(World world, int xInit, int yInit)
+	public Ship(World world, Texture shipTexture, int xInit, int yInit)
 	{
-		super(new TextureRegion(new Texture("ship.png")));
+		super(new TextureRegion(shipTexture));
 		this.world = world;
 
 		this.setScale(.025f / AgalagGame.PPM);
 		defineBody(xInit, yInit);
+		previousPosition = new Vector2(getPositionX(), getPositionY());
 	}
 	
 	public void update(float delta)
@@ -70,5 +72,26 @@ public class Ship extends Sprite
 	public float getPositionY() 
 	{
 		return b2body.getPosition().y;
+	}
+	
+	public void setBodyPosition(float x, float y)
+	{
+		b2body.setTransform(x, y, 0);
+	}
+	
+	public boolean hasMoved()
+	{
+		if(previousPosition.x != getPositionX() || previousPosition.y != getPositionY())
+		{
+			previousPosition.x = getPositionX();
+			previousPosition.y = getPositionY();
+			return true;
+		}
+		return false;
+	}
+	
+	public void remove()
+	{
+		world.destroyBody(b2body);
 	}
 }

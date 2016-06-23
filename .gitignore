@@ -1,6 +1,9 @@
 ## tmp
 *.png
 
+## Node JS 
+node_modules/
+
 ## Java
 
 *.class
