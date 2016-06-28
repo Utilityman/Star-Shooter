@@ -4,6 +4,8 @@ var io = require('socket.io')(server);
 
 var players = [];
 
+var enemyFormation = null;
+
 server.listen(8989, function()
 {
 	console.log("Server is now running...");
@@ -15,7 +17,8 @@ io.on('connection', function(socket)
 	socket.emit('socketID', { id: socket.id });
 	socket.broadcast.emit('newPlayer', {id : socket.id});
 	socket.emit('getPlayers', players);
-	socket.on('playerMoved', function(data){
+	socket.on('playerMoved', function(data)
+	{
 		data.id = socket.id;
 		socket.broadcast.emit('playerMoved', data);
 		
@@ -26,6 +29,16 @@ io.on('connection', function(socket)
 				players[i].x = data.x;
 				players[i].y = data.y;
 			}
+		}
+	});
+	
+	socket.on('sendFormation', function(data)
+	{
+		if(enemyFormation == null)
+		{
+			console.log("Accepting new enemy formation.");
+			console.log(data);
+			enemyFormation = data;
 		}
 	});
 	
@@ -47,4 +60,9 @@ function player(id, x, y)
 	this.id = id;
 	this.x = x;
 	this.y = y;
+}
+
+function wave()
+{
+	
 }

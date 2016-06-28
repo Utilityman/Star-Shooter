@@ -1,62 +1,82 @@
 package com.mackin.agalag;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map.Entry;
-
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
-import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.physics.box2d.Box2DDebugRenderer;
-import com.badlogic.gdx.physics.box2d.World;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
-import com.mackin.ship.Ship;
+import com.mackin.enemypatterns.DefaultPattern;
+import com.mackin.formation.AttackFormation;
+import com.mackin.managers.TextureManager;
+import com.mackin.ship.EnemyShip;
+import com.mackin.ship.PlayerShip;
 
-import io.socket.client.Socket;
-import io.socket.emitter.Emitter;
-
-public class Space implements Screen 
-{
-	private final float UPDATE_TIME = 1/60f;
-	float timer;
-	
+/**
+ * TODO: Move the world to the server D:
+ * @author jmackin
+ *
+ */
+public class Space implements Screen, Disposable
+{	
 	private AgalagGame game;
+	private TextureManager textures;
 	
 	// Camera
 	private OrthographicCamera gameCamera;
 	private Viewport gamePort;
 	
 	//Box2D
-	private World world;
+	//private World world;
 	
 	// Debugging
-	private Box2DDebugRenderer b2dr;
+	//private Box2DDebugRenderer b2dr;
 	
-	private Ship player;
+	// Player
+	private PlayerShip player;
 	private Socket socket;
+	private String id;
 	
-	private Texture shipTexture;
-	private Texture friendlyShipTexture;
+	// Networking
+	private HashMap<String, PlayerShip> friendlyPlayers;
+	private HashMap<String, EnemyShip> enemyUnits;
+	private ServerReader serverReader;
 	
-	private HashMap<String, Ship> friendlyPlayers;
+	private AttackFormation enemyFormation;
+
+	// TODO: HUD to have this information;
+	BitmapFont font;
+	private String displayMessage;
 	
-	public Space(AgalagGame game, Socket socket)
+	public Space(AgalagGame game, Socket socket, BufferedReader fromServer, String id)
 	{
 		this.game = game;
+		this.id = id;
 		this.socket = socket;
 
-		shipTexture = new Texture("ship.png");
-		friendlyShipTexture = new Texture("ship.png");
-		friendlyPlayers = new HashMap<String, Ship>();
+		// Setup networking immediately 
+		serverReader = new ServerReader(this, fromServer);
+		new Thread(serverReader).start();
 		
-		configSocketEvents();
+		// Load textures
+		textures = new TextureManager();
+		
+		friendlyPlayers = new HashMap<String, PlayerShip>();
+		enemyUnits = new HashMap<String, EnemyShip>();
+		
+		
+		if(true)	// Later check if non-default attack pattern exists
+		{
+			enemyFormation = new AttackFormation(new DefaultPattern());
+		}
 
 		
 		gameCamera = new OrthographicCamera();
@@ -64,15 +84,21 @@ public class Space implements Screen
 								  AgalagGame.V_HEIGHT / AgalagGame.PPM,
 								   gameCamera);
 		
-		world = new World(new Vector2(0,0), true);
-		b2dr = new Box2DDebugRenderer();
+		font = new BitmapFont();
+		font.getData().setScale(.25f);
+		displayMessage = null;
 		
+		// Once ready, ask the server to... 
+		game.tellServer("INIT");
+		game.tellServer("GET_PLAYERS");
+		// TODO: Send custom formations (this is the far-out dream goal)
+		game.tellServer("SUBMIT_FORMATION " + enemyFormation);
 	}
 
 	@Override
 	public void render(float delta) 
 	{
-		Gdx.gl.glClearColor(.075F, 0, .075F, 1);
+		Gdx.gl.glClearColor(.075F, 0, .1F, 1);
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 		if(player != null)
 		{
@@ -80,56 +106,84 @@ public class Space implements Screen
 	
 			game.batch.setProjectionMatrix(gameCamera.combined);
 			game.batch.begin();
-				player.draw(game.batch);
+			player.draw(game.batch);
 			
-			for(Entry<String, Ship> entry: friendlyPlayers.entrySet())
+			for(Entry<String, PlayerShip> entry: friendlyPlayers.entrySet())
 			{
 				entry.getValue().draw(game.batch);
 			}
-			
+			for(Entry<String, EnemyShip> entry: enemyUnits.entrySet())
+			{
+				entry.getValue().draw(game.batch);
+			}
+			if(displayMessage!= null)
+				font.draw(game.batch, displayMessage, -AgalagGame.V_WIDTH / (2 * AgalagGame.PPM) + (167 / AgalagGame.PPM), 125 / AgalagGame.PPM);
+		
 			game.batch.end();
 			
-			b2dr.render(world, gameCamera.combined);
+			//b2dr.render(world, gameCamera.combined);
 
 		}
 	}
 	
+	/**
+	 * Since the server updates the players and sends their locations on a schedule,
+	 * all this method has to do is read keyboard input. 
+	 * @param delta
+	 */
 	public void update(float delta)
 	{
-		timer += delta;
-		if(timer >= UPDATE_TIME && player.hasMoved())
-		{
-			JSONObject data = new JSONObject();
-			try
-			{
-				data.put("x", player.getPositionX());
-				data.put("y", player.getPositionY());
-				socket.emit("playerMoved", data);
-			}catch(JSONException e)
-			{
-				Gdx.app.log("Socket.io", "Errorsending update data");
-			}
-		}
 		input(delta);
-		
-		world.step(1 / 60F, 6, 2);
-		
-		player.update(delta);
-		for(Entry<String, Ship> entry: friendlyPlayers.entrySet())
-		{
-			entry.getValue().update(delta);
-		}		
-		// TODO: Follow the player or no
+				
+		// TODO: Not following the player, for now at least
 		//gameCamera.position.x = player.getPositionX();
-		gameCamera.position.y = player.getPositionY();
+		//gameCamera.position.y = player.getPositionY();
 		gameCamera.update();
 	}
-	
+
 	public void input(float delta)
 	{
 		player.handleInput(delta);
 	}
 
+	/*public void createBoundaries()
+	{
+		BodyDef bdef = new BodyDef();
+		FixtureDef fdef = new FixtureDef();
+		Body body;
+		
+		bdef.type = BodyDef.BodyType.StaticBody;
+		bdef.position.set(0, 0);
+		body = world.createBody(bdef);
+		
+		PolygonShape southZone = new PolygonShape();
+		southZone.setAsBox(AgalagGame.V_WIDTH / (2 * AgalagGame.PPM), 2 / AgalagGame.PPM, 
+							new Vector2(0, -(.5F * AgalagGame.V_HEIGHT) / AgalagGame.PPM), 0);
+		fdef.shape = southZone;
+		body.createFixture(fdef);
+		
+		fdef = new FixtureDef();
+		PolygonShape northZone = new PolygonShape();
+		northZone.setAsBox(AgalagGame.V_WIDTH / (2 * AgalagGame.PPM), 2 / AgalagGame.PPM, 
+							new Vector2(0, (.5F * AgalagGame.V_HEIGHT) / AgalagGame.PPM), 0);
+		fdef.shape = northZone;
+		body.createFixture(fdef);
+		
+		fdef = new FixtureDef();
+		PolygonShape eastZone = new PolygonShape();
+		eastZone.setAsBox(2 / AgalagGame.PPM, AgalagGame.V_HEIGHT / (2 * AgalagGame.PPM),
+							new Vector2((.5F * AgalagGame.V_WIDTH) / AgalagGame.PPM, 0), 0);
+		fdef.shape = eastZone;
+		body.createFixture(fdef);
+		
+		fdef = new FixtureDef();
+		PolygonShape westZone = new PolygonShape();
+		westZone.setAsBox(2 / AgalagGame.PPM, AgalagGame.V_HEIGHT / (2 * AgalagGame.PPM),
+							new Vector2(-(.5F * AgalagGame.V_WIDTH) / AgalagGame.PPM, 0), 0);
+		fdef.shape = westZone;
+		body.createFixture(fdef);
+	}*/
+	
 	@Override
 	public void resize(int width, int height) 
 	{
@@ -138,35 +192,90 @@ public class Space implements Screen
 
 	@Override
 	public void pause() {
-		// TODO Auto-generated method stub
 
 	}
 
 	@Override
 	public void resume() {
-		// TODO Auto-generated method stub
 
 	}
 	
 	@Override
 	public void show() {
-		// TODO Auto-generated method stub
 
 	}
 
 	@Override
 	public void hide() {
-		// TODO Auto-generated method stub
 
 	}
 
 	@Override
 	public void dispose() 
 	{
+		System.out.println("[CLIENT] DISCONNECTING");
+		game.tellServer("CLOSE_CONNECTION");
 		
 	}
-	
-	public void configSocketEvents()
+
+	public void handle(String in) 
+	{
+		String[] params = in.split("\\s+");
+
+		if(params[0].equals("INIT"))
+		{
+			
+			if(params[1].equals(id))
+				player = new PlayerShip(game, textures.get(""), Float.parseFloat(params[2]), Float.parseFloat(params[3]));
+			else
+				System.out.println("The server sent me the wrong id!!!!");
+		}
+		else if(params[0].equals("UPDATE_PLAYER"))
+		{
+			if(player != null)
+			if(params[1].equals(id))
+				player.update(Float.parseFloat(params[2]), Float.parseFloat(params[3]));
+			else
+				friendlyPlayers.get(params[1]).update(Float.parseFloat(params[2]), Float.parseFloat(params[3]));
+		}
+		else if(params[0].equals("PLAYER"))
+			friendlyPlayers.put(params[1], new PlayerShip(game, textures.get(""), Float.parseFloat(params[2]), Float.parseFloat(params[3])));
+		else if(params[0].equals("UPDATE"))
+		{
+			try {
+				throw new Exception("This should be dead code...");
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		else if(params[0].equals("UPDATE_ENEMY"))
+			enemyUnits.get(params[1]).update(Float.parseFloat(params[2]), Float.parseFloat(params[3]));
+		else if(params[0].equals("DISPLAY"))
+			if(params[1].equals("CLEAR"))
+				displayMessage = null;
+			else
+				displayMessage = params[1];
+		else if(params[0].equals("DEPLOY"))
+		{
+			enemyUnits.put(params[1], new EnemyShip(game, textures.get(params[2]), 
+						Float.parseFloat(params[3]), Float.parseFloat(params[4])));
+		}
+		else if(params[0].equals("PROJECTILE"))
+		{
+			
+		}
+		else if(in.equals("CLOSE_CONNECTION"))
+		{
+			// TODO: Do more than just closing the socket
+			try {
+				socket.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+/*	public void configSocketEvents()
 	{
 		socket.on(Socket.EVENT_CONNECT, new Emitter.Listener() 
 		{	
@@ -174,7 +283,7 @@ public class Space implements Screen
 			public void call(Object... arg0) 
 			{
 				Gdx.app.log("SocketIO", "Connected");
-				player = new Ship(world, shipTexture, 0, 0);
+				player = new PlayerShip(world, textures.get(""), 0, 0);
 
 			}
 		}).on("socketID",  new Emitter.Listener() {
@@ -202,7 +311,7 @@ public class Space implements Screen
 				{
 				String id = data.getString("id");
 				Gdx.app.log("SocketIO",  "New Player Connected: " + id);
-				friendlyPlayers.put(id, new Ship(world, friendlyShipTexture, -1,0));
+				friendlyPlayers.put(id, new PlayerShip(world, textures.get(""), -1,0));
 				}catch(JSONException e)
 				{
 					Gdx.app.log("SocketIO", "Error getting new Player ID");
@@ -217,7 +326,7 @@ public class Space implements Screen
 				try
 				{
 					String id = data.getString("id");
-					Ship removedShip = friendlyPlayers.remove(id);
+					PlayerShip removedShip = friendlyPlayers.remove(id);
 					removedShip.remove();
 				}catch(JSONException e)
 				{
@@ -234,7 +343,7 @@ public class Space implements Screen
 				{
 					for(int i = 0; i < objects.length(); i++)
 					{
-						Ship coopPlayer = new Ship(world, friendlyShipTexture, 0, 0);
+						PlayerShip coopPlayer = new PlayerShip(world, textures.get(""), 0, 0);
 						Vector2 position = new Vector2();
 						position.x = ((Double) objects.getJSONObject(i).getDouble("x")).floatValue();
 						position.y = ((Double) objects.getJSONObject(i).getDouble("y")).floatValue();
@@ -267,6 +376,6 @@ public class Space implements Screen
 				}
 			}
 		});
-	}
+	}*/
 
 }
