@@ -1,4 +1,4 @@
-package com.mackin.ship;
+package com.mackin.sprite.ship;
 
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;

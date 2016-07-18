@@ -17,6 +17,8 @@ public class TextureManager
 	
 	public Texture get(String string) 
 	{
+		if(string.equals("someSpecificString"))
+			return friendlyShipTexture;
 		return shipTexture;
 	}
 

@@ -17,11 +17,11 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import com.mackin.enemypatterns.DefaultPattern;
 import com.mackin.formation.AttackFormation;
 import com.mackin.managers.TextureManager;
-import com.mackin.ship.EnemyShip;
-import com.mackin.ship.PlayerShip;
+import com.mackin.sprite.projectile.ProjectileSprite;
+import com.mackin.sprite.ship.EnemyShip;
+import com.mackin.sprite.ship.PlayerShip;
 
 /**
- * TODO: Move the world to the server D:
  * @author jmackin
  *
  */
@@ -48,6 +48,7 @@ public class Space implements Screen, Disposable
 	// Networking
 	private HashMap<String, PlayerShip> friendlyPlayers;
 	private HashMap<String, EnemyShip> enemyUnits;
+	private HashMap<String, ProjectileSprite> projectiles;
 	private ServerReader serverReader;
 	
 	private AttackFormation enemyFormation;
@@ -71,6 +72,7 @@ public class Space implements Screen, Disposable
 		
 		friendlyPlayers = new HashMap<String, PlayerShip>();
 		enemyUnits = new HashMap<String, EnemyShip>();
+		projectiles = new HashMap<String, ProjectileSprite>();
 		
 		
 		if(true)	// Later check if non-default attack pattern exists
@@ -91,6 +93,8 @@ public class Space implements Screen, Disposable
 		// Once ready, ask the server to... 
 		game.tellServer("INIT");
 		game.tellServer("GET_PLAYERS");
+		game.tellServer("GET_ENEMIES");
+		game.tellServer("GET_PROJECTILES");
 		// TODO: Send custom formations (this is the far-out dream goal)
 		game.tellServer("SUBMIT_FORMATION " + enemyFormation);
 	}
@@ -113,6 +117,10 @@ public class Space implements Screen, Disposable
 				entry.getValue().draw(game.batch);
 			}
 			for(Entry<String, EnemyShip> entry: enemyUnits.entrySet())
+			{
+				entry.getValue().draw(game.batch);
+			}
+			for(Entry<String, ProjectileSprite> entry: projectiles.entrySet())
 			{
 				entry.getValue().draw(game.batch);
 			}
@@ -239,14 +247,11 @@ public class Space implements Screen, Disposable
 				friendlyPlayers.get(params[1]).update(Float.parseFloat(params[2]), Float.parseFloat(params[3]));
 		}
 		else if(params[0].equals("PLAYER"))
-			friendlyPlayers.put(params[1], new PlayerShip(game, textures.get(""), Float.parseFloat(params[2]), Float.parseFloat(params[3])));
-		else if(params[0].equals("UPDATE"))
 		{
-			try {
-				throw new Exception("This should be dead code...");
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			if(params[1].equals(id))
+				player = new PlayerShip(game, textures.get(""), Float.parseFloat(params[2]), Float.parseFloat(params[3]));
+			else
+				friendlyPlayers.put(params[1], new PlayerShip(game, textures.get(""), Float.parseFloat(params[2]), Float.parseFloat(params[3])));
 		}
 		else if(params[0].equals("UPDATE_ENEMY"))
 			enemyUnits.get(params[1]).update(Float.parseFloat(params[2]), Float.parseFloat(params[3]));
@@ -257,12 +262,18 @@ public class Space implements Screen, Disposable
 				displayMessage = params[1];
 		else if(params[0].equals("DEPLOY"))
 		{
+			
 			enemyUnits.put(params[1], new EnemyShip(game, textures.get(params[2]), 
 						Float.parseFloat(params[3]), Float.parseFloat(params[4])));
 		}
 		else if(params[0].equals("PROJECTILE"))
 		{
-			
+			projectiles.put(params[1], new ProjectileSprite(game, textures.get(""), 
+					Float.parseFloat(params[2]), Float.parseFloat(params[3])));
+		}
+		else if(params[0].equals("UPDATE_PROJECTILE"))
+		{
+			projectiles.get(params[1]).update(Float.parseFloat(params[2]), Float.parseFloat(params[3]));
 		}
 		else if(in.equals("CLOSE_CONNECTION"))
 		{

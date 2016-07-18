@@ -1,4 +1,4 @@
-package com.mackin.ship.shell;
+package com.mackin.formation;
 
 /**
  * This class holds the information to create a ship body and sprite but exists as neither

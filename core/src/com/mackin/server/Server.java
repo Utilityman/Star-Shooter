@@ -97,7 +97,7 @@ public class Server extends Game
         }
         String saltStr = salt.toString();
         System.out.println("[INTERNAL] Generated ID: " + saltStr);
-        for(int i = 0; i < clientThreads.size(); i++)
+        /*for(int i = 0; i < clientThreads.size(); i++)
         {
         	if(clientThreads.get(i).getID().equals(saltStr))
         	{
@@ -105,13 +105,36 @@ public class Server extends Game
         		System.out.println("[LOTTO] We just won the jackpot");
         		return generateID();
         	}
-        }
+        }*/
         return saltStr;
 	}
 	
 	public String generateAIID()
 	{
 		String chars = "abcdefghijklmnopqrstuvwxyz1234567890";
+		StringBuilder salt = new StringBuilder();
+        Random rnd = new Random();
+        while (salt.length() < 18) {
+            int index = (int) (rnd.nextFloat() * chars.length());
+            salt.append(chars.charAt(index));
+        }
+        String saltStr = salt.toString();
+        //System.out.println("[INTERNAL] Generated ID: " + saltStr);
+        /*for(int i = 0; i < clientThreads.size(); i++)
+        {
+        	if(clientThreads.get(i).getID().equals(saltStr))
+        	{
+        		// This should never ever happen
+        		System.out.println("[LOTTO] We just won the jackpot");
+        		return generateID();
+        	}
+        }*/
+        return saltStr;
+	}
+	
+	public String generateProjectileID()
+	{
+		String chars = "1234567890";
 		StringBuilder salt = new StringBuilder();
         Random rnd = new Random();
         while (salt.length() < 18) {
@@ -136,7 +159,7 @@ public class Server extends Game
 	{
 		for(int i = 0; i < clientThreads.size(); i++)
 		{
-			if(!clientThreads.get(i).getID().equals(id) && clientThreads.get(i).isVerified())
+			if(!clientThreads.get(i).getID().equals(id) && clientThreads.get(i).isVerified() && clientThreads.get(i).isReady())
 				clientThreads.get(i).tellClient(message);
 		}
 	}

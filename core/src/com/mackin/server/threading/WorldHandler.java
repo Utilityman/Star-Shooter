@@ -12,12 +12,13 @@ import com.badlogic.gdx.physics.box2d.FixtureDef;
 import com.badlogic.gdx.physics.box2d.PolygonShape;
 import com.badlogic.gdx.physics.box2d.World;
 import com.mackin.agalag.AgalagGame;
+import com.mackin.body.PendingObject;
+import com.mackin.body.projectile.Projectile;
+import com.mackin.body.ship.EnemyShipBody;
+import com.mackin.body.ship.FriendlyShipBody;
+import com.mackin.body.ship.ShipBody;
 import com.mackin.managers.SpaceContactListener;
-import com.mackin.projectile.Projectile;
 import com.mackin.server.Server;
-import com.mackin.ship.body.EnemyShipBody;
-import com.mackin.ship.body.FriendlyShipBody;
-import com.mackin.ship.body.ShipBody;
 
 public class WorldHandler implements Runnable 
 {
@@ -28,9 +29,10 @@ public class WorldHandler implements Runnable
 	private World world;
 	private boolean running;
 	
-	private Map<String, FriendlyShipBody> players;
-	private Map<String, EnemyShipBody> enemies;
-	private ArrayList<Projectile> projectiles;
+	private volatile Map<String, FriendlyShipBody> players;
+	private volatile Map<String, EnemyShipBody> enemies;
+	private volatile Map<String, Projectile> projectiles;
+	private volatile ArrayList<PendingObject> pendingObjects;
 	
 	public WorldHandler(Server server, World world)
 	{
@@ -38,7 +40,8 @@ public class WorldHandler implements Runnable
 		this.server = server;
 		players = new HashMap<String, FriendlyShipBody>();
 		enemies = new HashMap<String, EnemyShipBody>();
-		projectiles = new ArrayList<Projectile>();
+		projectiles = new HashMap<String, Projectile>();
+		pendingObjects = new ArrayList<PendingObject>();
 		createBoundaries();
 	}
 
@@ -57,26 +60,37 @@ public class WorldHandler implements Runnable
 				{
 					entry.getValue().update(timer);
 					server.tellEveryone(ID, "UPDATE_PLAYER " + entry.getKey() + " " + 
-					entry.getValue().getPositionX() + " " + entry.getValue().getPositionY());
+										entry.getValue().getX() + " " + entry.getValue().getY());
 				}
 				for(Entry<String, EnemyShipBody> entry: enemies.entrySet())
 				{
 					entry.getValue().update(timer);
 					server.tellEveryone(ID, "UPDATE_ENEMY " + entry.getKey() + " " + 
-					entry.getValue().getPositionX() + " " + entry.getValue().getPositionY());
+										entry.getValue().getX() + " " + entry.getValue().getY());
 				}
-				for(int i = 0; i < projectiles.size(); i++)
+				for(Entry<String, Projectile> entry: projectiles.entrySet())
 				{
-					server.tellEveryone(ID, "UPDATE_PROJECTILE " + i + " " + projectiles.get(i).getX() + " " + projectiles.get(i).getY());
+					server.tellEveryone(ID, "UPDATE_PROJECTILE " + entry.getValue().getID() + " " + 
+										entry.getValue().getX() + " " + entry.getValue().getY());
+					entry.getValue().update(timer);
 				}
 				
 				timer = 0;
+				// Objects are created after the world takes a step (after the world is unlocked)
+				for(int i = 0; i < pendingObjects.size(); i++)
+				{
+					pendingObjects.get(i).createBody(server, world, players, enemies, projectiles);
+				}
+				pendingObjects.clear();
 			}
 			timer+= (System.currentTimeMillis() - startTime);
 
 		}
 	}
 	
+	/**
+	 * Creates the boundaries for the game world so that players don't just leave the screen
+	 */
 	public void createBoundaries()
 	{
 		BodyDef bdef = new BodyDef();
@@ -91,7 +105,7 @@ public class WorldHandler implements Runnable
 		southZone.setAsBox(AgalagGame.V_WIDTH / (2 * AgalagGame.PPM), 2 / AgalagGame.PPM, 
 							new Vector2(0, -(.5F * AgalagGame.V_HEIGHT) / AgalagGame.PPM), 0);
 		fdef.filter.categoryBits = SpaceContactListener.WALLS;
-		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP;
+		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP | SpaceContactListener.FRIENDLY_BULLET;
 
 
 		fdef.shape = southZone;
@@ -102,7 +116,7 @@ public class WorldHandler implements Runnable
 		northZone.setAsBox(AgalagGame.V_WIDTH / (2 * AgalagGame.PPM), 2 / AgalagGame.PPM, 
 							new Vector2(0, (.5F * AgalagGame.V_HEIGHT) / AgalagGame.PPM), 0);
 		fdef.filter.categoryBits = SpaceContactListener.WALLS;
-		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP;
+		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP | SpaceContactListener.FRIENDLY_BULLET;
 
 		fdef.shape = northZone;
 		body.createFixture(fdef);
@@ -112,7 +126,7 @@ public class WorldHandler implements Runnable
 		eastZone.setAsBox(2 / AgalagGame.PPM, AgalagGame.V_HEIGHT / (2 * AgalagGame.PPM),
 							new Vector2((.5F * AgalagGame.V_WIDTH) / AgalagGame.PPM, 0), 0);
 		fdef.filter.categoryBits = SpaceContactListener.WALLS;
-		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP;
+		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP | SpaceContactListener.FRIENDLY_BULLET;
 
 
 		fdef.shape = eastZone;
@@ -123,8 +137,7 @@ public class WorldHandler implements Runnable
 		westZone.setAsBox(2 / AgalagGame.PPM, AgalagGame.V_HEIGHT / (2 * AgalagGame.PPM),
 							new Vector2(-(.5F * AgalagGame.V_WIDTH) / AgalagGame.PPM, 0), 0);
 		fdef.filter.categoryBits = SpaceContactListener.WALLS;
-		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP;
-
+		fdef.filter.maskBits = SpaceContactListener.FRIENDLY_SHIP | SpaceContactListener.FRIENDLY_BULLET;
 
 		fdef.shape = westZone;
 		body.createFixture(fdef);
@@ -133,7 +146,7 @@ public class WorldHandler implements Runnable
 	public void createPlayer(String id, float x, float y) 
 	{
 		System.out.println("[INTERNAL] Created player in world.");
-		players.put(id, new FriendlyShipBody(world, x, y));
+		pendingObjects.add(new PendingObject(FriendlyShipBody.class, id, x, y));
 	}
 
 	public ShipBody getPlayers(String id) 
@@ -141,22 +154,22 @@ public class WorldHandler implements Runnable
 		return players.get(id);
 	}
 
-	public void userInput(String id, String keyPressed, String keyVal) 
+	public void userInput(String id, String isPressed, String keyVal) 
 	{
-		if(keyPressed.equals("4"))
+		if(keyVal.equals("4"))
 		{
-			Projectile newBullet = new Projectile(world, players.get(id));
-			projectiles.add(newBullet);
-			server.tellEveryone(ID, "PROJECTILE " + (projectiles.size()-1) + " " + newBullet.getX() + " " + newBullet.getY());
+			pendingObjects.add(new PendingObject(Projectile.class, server.generateProjectileID(), players.get(id)));
 		}
 		else 
-			players.get(id).moveBody(keyPressed, keyVal);
+			players.get(id).moveBody(isPressed, keyVal);
 	}
 	
 	public void createEnemy(String id, float x, float y, int aistyle) 
 	{
+
 		System.out.println("[INTERNAL] Created enemy in world.");
-		enemies.put(id, new EnemyShipBody(world, x, y, aistyle));
+		pendingObjects.add(new PendingObject(EnemyShipBody.class, id, x, y, aistyle));
+		//enemies.put(id, new EnemyShipBody(world, x, y, aistyle));
 	}
 
 	public Map<String, EnemyShipBody> getAllEnemies() 
@@ -167,5 +180,13 @@ public class WorldHandler implements Runnable
 	public EnemyShipBody getEnemy(String enemyID) 
 	{
 		return enemies.get(enemyID);
+	}
+
+	/**
+	 * @return
+	 */
+	public Map<String, Projectile> getProjectiles() 
+	{
+		return projectiles;
 	}
 }

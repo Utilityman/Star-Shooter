@@ -5,12 +5,16 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Map.Entry;
 
+import com.mackin.body.projectile.Projectile;
+import com.mackin.body.ship.EnemyShipBody;
 import com.mackin.server.Server;
 
 public class ClientHandler implements Runnable 
 {
-	private static final String ID = "game_handler";
+	@SuppressWarnings("unused")
+	private static final String ID = "client_handler";
 	
 	private Server server;
 	
@@ -22,11 +26,11 @@ public class ClientHandler implements Runnable
 	
 	private boolean running;
 	private boolean verified;
+	private boolean ready;
 	
-	// PlayerDetails
 	private String id;
-	//private float x;
-	//private float y;
+	
+	private TimeoutWatcher timer;
 	
 	public ClientHandler(Socket clientSocket, String id, Server server, ArrayList<ClientHandler> clientThreads) 
 	{
@@ -34,9 +38,8 @@ public class ClientHandler implements Runnable
 		this.clientSocket = clientSocket;
 		this.server = server;
 		verified = false;
-		//this.clientThreads = clientThreads;
-		//x = 0;
-		//y = 0;
+		ready = false;
+		timer = new TimeoutWatcher();
 	}
 
 	@Override
@@ -48,17 +51,20 @@ public class ClientHandler implements Runnable
 		{
 			this.fromClient = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 			this.toClient = new PrintWriter(clientSocket.getOutputStream());
+			
+			new Thread(timer).start();
 
-			while(running && (incomingMessage = fromClient.readLine()) != null)
+			while(running && !timer.isTriggered() && (incomingMessage = fromClient.readLine()) != null)
 			{
-				// try/catch socket exception 
+				timer.reset();
 				if(!incomingMessage.contains("UPDATE") && !incomingMessage.contains("INPUT"))
-				System.out.println("[SERVER] Received: " + incomingMessage);
-				
+					System.out.println("[SERVER] Received: " + incomingMessage);	
 				
 				reply(incomingMessage);
-
 			}
+			
+			if(timer.isTriggered())
+				System.out.println("hey");
 			
 		}
 		catch(Exception e)
@@ -83,9 +89,7 @@ public class ClientHandler implements Runnable
 		}
 		if(params[0].equals("INIT"))
 		{
-			tellClient("INIT " + id +" " + 0+ " " + 0);
 			server.getWorld().createPlayer(id, 0, 0);
-			server.tellEveryone(ID, "PLAYER " + id+ " " + 0+ " " + 0);
 		}
 		else if(params[0].equals("GET_PLAYERS"))
 		{
@@ -95,6 +99,23 @@ public class ClientHandler implements Runnable
 					tellClient("PLAYER " + server.getClients().get(i).getID() + " " + 
 					server.getClients().get(i).getX() + " " + server.getClients().get(i).getY());
 			}
+		}
+		else if(params[0].equals("GET_ENEMIES"))
+		{
+			for(Entry<String, EnemyShipBody> entry: server.getWorld().getAllEnemies().entrySet())
+			{
+				tellClient("DEPLOY " + entry.getKey() + " texture " + 
+				entry.getValue().getX() + " " + entry.getValue().getY());
+			}		
+		}
+		else if(params[0].equals("GET_PROJECTILES"))
+		{
+			for(Entry<String, Projectile> entry: server.getWorld().getProjectiles().entrySet())
+			{
+				tellClient("PROJECTILE " + entry.getValue().getID() + " " + 
+									entry.getValue().getX() + " " + entry.getValue().getY());
+			}			
+			ready = true;
 		}
 		else if(params[0].equals("UPDATE"))
 		{
@@ -123,17 +144,22 @@ public class ClientHandler implements Runnable
 	
 	public float getX()
 	{
-		return server.getWorld().getPlayers(id).getPositionX();
+		return server.getWorld().getPlayers(id).getX();
 	}
 	
 	public float getY()
 	{
-		return server.getWorld().getPlayers(id).getPositionY();
+		return server.getWorld().getPlayers(id).getY();
 	}
 
 	public boolean isVerified() 
 	{
 		return verified;
+	}
+	
+	public boolean isReady()
+	{
+		return ready;
 	}
 
 }

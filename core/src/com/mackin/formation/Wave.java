@@ -4,7 +4,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.badlogic.gdx.utils.Queue;
-import com.mackin.ship.shell.ShipShell;
 
 public class Wave 
 {

@@ -1,9 +1,9 @@
 package com.mackin.server.threading;
 
 import com.mackin.formation.AttackFormation;
+import com.mackin.formation.ShipShell;
 import com.mackin.formation.Wave;
 import com.mackin.server.Server;
-import com.mackin.ship.shell.ShipShell;
 
 public class GameEvents  implements Runnable
 {
@@ -41,8 +41,7 @@ public class GameEvents  implements Runnable
 	private boolean deploy(Wave wave)
 	{
 		System.out.println("[WAVE " + count + "] Deploying new wave");
-		//EnemyController controller = new EnemyController(server, wave);
-		//new Thread(controller).start();
+
 		while(wave.hasEnemies())
 		{
 			System.out.println("[WAVE " + count + "] Sending new strand");
@@ -52,9 +51,8 @@ public class GameEvents  implements Runnable
 				try { Thread.sleep(SEND_DELAY); } catch (InterruptedException e) { e.printStackTrace(); }
 				String enemyID = server.generateAIID();
 				server.getWorld().createEnemy(enemyID, enemies[i].getXInit(), enemies[i].getYInit(), enemies[i].getAIStyle());
-				server.tellEveryone(ID, "DEPLOY " + enemyID + " " + enemies[i].getShipTexture() + " " + 
-									enemies[i].getXInit() + " " + enemies[i].getYInit());
-				//controller.addEnemy(server.getWorld().getEnemy(enemyID));
+				//server.tellEveryone(ID, "DEPLOY " + enemyID + " " + enemies[i].getShipTexture() + " " + 
+					//				enemies[i].getXInit() + " " + enemies[i].getYInit());
 			}
 			try { Thread.sleep((long) wave.getDownTime()); } catch (InterruptedException e) { e.printStackTrace(); }
 			

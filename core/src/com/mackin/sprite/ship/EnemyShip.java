@@ -1,4 +1,4 @@
-package com.mackin.ship;
+package com.mackin.sprite.ship;
 
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -16,6 +16,7 @@ public class EnemyShip extends Ship
 	{
 		super(new TextureRegion(texture), xInit, yInit);
 		this.setScale(.025f / AgalagGame.PPM);
+		this.setColor(1.0F, .2F, .2F, 1.0F);
 		this.game = game;
 		shootDelay = 0;
 	}

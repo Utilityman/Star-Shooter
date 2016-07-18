@@ -1,4 +1,4 @@
-package com.mackin.ship;
+package com.mackin.sprite.ship;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;

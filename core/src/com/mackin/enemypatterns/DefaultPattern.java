@@ -1,8 +1,8 @@
 package com.mackin.enemypatterns;
 
+import com.mackin.formation.ShipShell;
 import com.mackin.formation.SpawnLocations;
 import com.mackin.formation.Wave;
-import com.mackin.ship.shell.ShipShell;
 
 public class DefaultPattern extends AttackPattern
 {
